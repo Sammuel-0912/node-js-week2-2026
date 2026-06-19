@@ -1,6 +1,6 @@
-const http = require('node:http');
-const fs = require('node:fs');
-const { formidable } = require('formidable');  // formidable v3 用 named import
+const http = require("node:http");
+const fs = require("node:fs");
+const { formidable } = require("formidable"); // formidable v3 用 named import
 
 // ========== 任務一：讀取上傳設定 ==========
 /**
@@ -28,6 +28,15 @@ const { formidable } = require('formidable');  // formidable v3 用 named import
 function getUploadConfig() {
   // TODO: 實作此函式
   // 提示：用 || 給預設值；MAX_FILE_SIZE_MB 是字串，記得先 Number() 轉型再換算 bytes
+  const uploadDir = process.env.UPLOAD_DIR || "/tmp";
+  const maxFileSize = process.env.MAX_FILE_SIZE_MB || 5;
+  const maxFileSize_bytes = Number(maxFileSize) * 1024 * 1024;
+  const gymName = process.env.GYM_NAME || "未命名健身房";
+  return {
+    uploadDir: uploadDir,
+    maxFileSize: maxFileSize_bytes,
+    gymName: gymName,
+  };
 }
 
 // ========== 任務二：取副檔名 ==========
@@ -51,6 +60,12 @@ function getUploadConfig() {
 function getFileExtension(filename) {
   // TODO: 實作此函式
   // 提示：用 lastIndexOf('.') 找最後一個 .，toLowerCase() 轉小寫
+  const lastIndex = filename.lastIndexOf(".");
+  if (lastIndex !== -1) {
+    return filename.substring(lastIndex).toLowerCase();
+  } else {
+    return "";
+  }
 }
 
 // ========== 任務三：解析檔案 metadata ==========
@@ -76,6 +91,13 @@ function getFileExtension(filename) {
 function parseFileMetadata(file) {
   // TODO: 實作此函式
   // 提示：呼叫 getFileExtension 取副檔名，Math.round(size / 1024) 算 KB
+  const extName = getFileExtension(file.originalFilename);
+  const sizeKB = Math.round(file.size / 1024);
+  return {
+    filename: file.originalFilename,
+    sizeKB: sizeKB,
+    ext: extName,
+  };
 }
 
 // ========== 任務四：產出 upload log 字串 ==========
@@ -98,6 +120,7 @@ function parseFileMetadata(file) {
 function formatUploadLog(meta, config) {
   // TODO: 實作此函式
   // 提示：用 template literal 組字串
+  return `[${config.gymName}] uploaded ${meta.filename} (${meta.sizeKB} KB) → ${config.uploadDir}`;
 }
 
 // ========== 任務五：路由分派 ==========
@@ -135,8 +158,63 @@ function router(req, res, config) {
   //   - 超過 maxFileSize 時 formidable v3 發 'error' event，要用 form.on('error', ...) 接
   //   - 同時 form.parse 的 callback err 也要處理
   //   - 避免重複 res.writeHead（檢查 res.headersSent）
+
+  if (req.method === "POST" && req.url === "/coaches/avatar") {
+    handleUpload(req, res, config);
+  } else {
+    handleNotFound(req, res);
+  }
+}
+function handleNotFound(req, res) {
+  res.writeHead(404, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ error: "Not Found" }));
 }
 
+function handleUpload(req, res, config) {
+  //1.建立formidable實例並帶入設定
+  const form = formidable({
+    uploadDir: config.uploadDir,
+    maxFileSize: config.maxFileSize,
+    keepExtensions: true,
+  });
+  //定義一個安全回應函式，避免重複寫入Header
+  let hasResponsed = false;
+  const sendJsonResponse = (statusCode, data) => {
+    if (hasResponsed || res.headersSent) return;
+    hasResponsed = true;
+    res.writeHead(statusCode, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(data));
+  };
+  //監聽formidable 內部錯誤(超過 maxFileSize)
+  form.on("error", (err) => {
+    sendJsonResponse(500, { error: err.message || "Formidable error" });
+  });
+  //3.開始解析request
+  form.parse(req, (err, fileds, files) => {
+    if (err) {
+      sendJsonResponse(500, { error: err.message || "Parse error" });
+      return;
+    }
+    //4. 檢查是否有file欄位
+    const fileField = files.file;
+    const uploadedFile = fileField
+      ? (Array.isArray(fileField)
+        ? fileField[0]
+        : fileField)
+      : null;
+    if (!uploadedFile || !uploadedFile.originalFilename) {
+      sendJsonResponse(400, { error: "No file uploaded" });
+      return;
+    }
+    //5. 成功解析，組裝題目要求的JSON檔案
+    const meta = parseFileMetadata(uploadedFile);
+    const responseData = {
+      ...meta,
+      savedPath: uploadedFile.filepath
+    }
+    sendJsonResponse(200, responseData);
+  });
+}
 // ========== 任務六：建立上傳 server ==========
 /**
  * 建 http.Server、把每個 request 交給 router。
@@ -156,6 +234,15 @@ function router(req, res, config) {
 function createUploadServer(config) {
   // TODO: 實作此函式
   // 提示：主邏輯都在 router 裡，這邊函式內容不多
+  //1. 檢查config.uploadDir資料夾是否存在，不存在就遞迴建立
+  if (!fs.existsSync(config.uploadDir)) {
+    fs.mkdirSync(config.uploadDir, { recursive: true });
+  }
+  //2. 建立http伺服器，將request交給rounter處理
+  const server = http.createServer((req, res) => {
+    router(req, res, config);
+  });
+  return server;
 }
 
 module.exports = {
