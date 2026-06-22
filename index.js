@@ -120,7 +120,7 @@ function parseFileMetadata(file) {
 function formatUploadLog(meta, config) {
   // TODO: 實作此函式
   // 提示：用 template literal 組字串
-  return `[${config.gymName}] uploaded ${meta.filename} (${meta.sizeKB} KB) → ${config.uploadDir}`;
+  return `[${config.gymName}] Uploaded ${meta.filename} (${meta.sizeKB} KB) → ${config.uploadDir}`;
 }
 
 // ========== 任務五：路由分派 ==========
@@ -178,10 +178,8 @@ function handleUpload(req, res, config) {
     keepExtensions: true,
   });
   //定義一個安全回應函式，避免重複寫入Header
-  let hasResponsed = false;
   const sendJsonResponse = (statusCode, data) => {
-    if (hasResponsed || res.headersSent) return;
-    hasResponsed = true;
+    if (res.headersSent) return;
     res.writeHead(statusCode, { "Content-Type": "application/json" });
     res.end(JSON.stringify(data));
   };
@@ -238,9 +236,8 @@ function createUploadServer(config) {
   // TODO: 實作此函式
   // 提示：主邏輯都在 router 裡，這邊函式內容不多
   //1. 檢查config.uploadDir資料夾是否存在，不存在就遞迴建立
-  if (!fs.existsSync(config.uploadDir)) {
     fs.mkdirSync(config.uploadDir, { recursive: true });
-  }
+  
   //2. 建立http伺服器，將request交給rounter處理
   const server = http.createServer((req, res) => {
     router(req, res, config);
