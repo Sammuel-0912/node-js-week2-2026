@@ -196,20 +196,23 @@ function handleUpload(req, res, config) {
       return;
     }
     //4. 檢查是否有file欄位
-    const fileField = files.file;
-    const uploadedFile = fileField
-      ? (Array.isArray(fileField)
-        ? fileField[0]
-        : fileField)
-      : null;
-    if (!uploadedFile || !uploadedFile.originalFilename) {
+    // const fileField = files.file;
+    // const uploadedFile = fileField
+    //   ? (Array.isArray(fileField)
+    //     ? fileField[0]
+    //     : fileField)
+    //   : null;
+    const uploadedFile = files.file && files.file[0];
+    if (!uploadedFile) {
       sendJsonResponse(400, { error: "No file uploaded" });
       return;
     }
     //5. 成功解析，組裝題目要求的JSON檔案
     const meta = parseFileMetadata(uploadedFile);
     const responseData = {
-      ...meta,
+      filename: meta.filename,
+      sizeKB: meta.sizeKB,
+      ext: meta.ext,
       savedPath: uploadedFile.filepath
     }
     sendJsonResponse(200, responseData);
